@@ -1,4 +1,4 @@
-name: Deploy
+name: "Bash Feedback Deploy"
 
 on:
   push:
@@ -20,11 +20,11 @@ jobs:
       - id: check
         name: Check Commit Message
         run: |
-          git clone https://github.com/antony-jr/ritual
-          cd ritual
+          git clone https://github.com/antony-jr/spirit-addons
+          cd spirit-addons
           git tag > /tmp/tags.txt
           cd ..
-          rm -rf ritual
+          rm -rf spirit-addons
           cat /tmp/tags.txt
           result=$(python3 scripts/check.py "$(git log -1 --pretty=%B)" "/tmp/tags.txt")
           echo "::set-output name=check::$result"
@@ -54,24 +54,27 @@ jobs:
           default: true
           override: true
 
-      - name: Build Ritual
+      - name: Build Bash Feedback
         id: linux_build
         run: |
           deploy=${{ needs.Check.outputs.deploy }}
+          cd bash_feedback
           cargo build --all --release
           strip target/release/bash_feedback
-          mv target/release/bash_feedback bash-feedback-linux-amd64
-          
+          mv target/release/bash_feedback ../bash-feedback-linux-amd64
+          cd ..
+
           echo ::set-output name=binaryfile::bash-feedback-linux-amd64
 
       - name: Delete Old Development Builds
         if: needs.Check.outputs.deploy == 'false'
-        uses: dev-drprasad/delete-older-releases@v0.2.0
+        uses: mknejp/delete-release-assets@v1
         with:
-          keep_latest: 0
-          delete_tag_pattern: development
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: development
+          assets: "bash-feedback*"
+          fail-if-no-assets: false
+          fail-if-no-release: false
 
       - name: Upload Development Build
         if: needs.Check.outputs.deploy == 'false'
@@ -83,8 +86,8 @@ jobs:
           overwrite: true
           file_glob: true
           prerelease: true
-          release_name: "Ritual Development Builds"
-          body: "The latest and greatest of Ritual!"
+          release_name: "Spirit Addons Development Builds"
+          body: "Latest builds of Spirit Addons"
 
       - name: Create Release
         if: needs.Check.outputs.deploy != 'false'
