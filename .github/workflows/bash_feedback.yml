@@ -1,0 +1,111 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  Check:
+    runs-on: ubuntu-18.04
+    outputs:
+      deploy: ${{ steps.check.outputs.check }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Python3
+        run: |
+          sudo apt install -y python3
+
+      - id: check
+        name: Check Commit Message
+        run: |
+          git clone https://github.com/antony-jr/ritual
+          cd ritual
+          git tag > /tmp/tags.txt
+          cd ..
+          rm -rf ritual
+          cat /tmp/tags.txt
+          result=$(python3 scripts/check.py "$(git log -1 --pretty=%B)" "/tmp/tags.txt")
+          echo "::set-output name=check::$result"
+          
+  build_linux:
+    name: "Build Linux and Create Release"
+    runs-on: ubuntu-18.04
+    outputs:
+      deploy: ${{ needs.Check.outputs.deploy }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    needs: Check
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get upgrade -y
+          sudo apt-get -y install build-essential libgl1-mesa-dev \
+               ca-certificates autoconf libtool patch wget \
+               pkg-config
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      - name: Build Ritual
+        id: linux_build
+        run: |
+          deploy=${{ needs.Check.outputs.deploy }}
+          cargo build --all --release
+          strip target/release/bash_feedback
+          mv target/release/bash_feedback bash-feedback-linux-amd64
+          
+          echo ::set-output name=binaryfile::bash-feedback-linux-amd64
+
+      - name: Delete Old Development Builds
+        if: needs.Check.outputs.deploy == 'false'
+        uses: dev-drprasad/delete-older-releases@v0.2.0
+        with:
+          keep_latest: 0
+          delete_tag_pattern: development
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Development Build
+        if: needs.Check.outputs.deploy == 'false'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ./${{steps.linux_build.outputs.binaryfile}}
+          tag: development
+          overwrite: true
+          file_glob: true
+          prerelease: true
+          release_name: "Ritual Development Builds"
+          body: "The latest and greatest of Ritual!"
+
+      - name: Create Release
+        if: needs.Check.outputs.deploy != 'false'
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.Check.outputs.deploy }}
+          release_name: Release ${{ needs.Check.outputs.deploy }}
+          body_path: ./release_notes/${{ needs.Check.outputs.deploy }}.md
+          draft: false
+          prerelease: false
+
+      - name: Upload Build Release Asset
+        if: needs.Check.outputs.deploy != 'false'
+        uses: actions/upload-release-asset@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{steps.linux_build.outputs.binaryfile}}
+          asset_name: ${{steps.linux_build.outputs.binaryfile}}
+          asset_content_type: application/octet-stream
