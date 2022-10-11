@@ -10,7 +10,7 @@ chmod +x ~/.spirit/addons/bash-feedback
 wget -O ~/.bashfeedbackrc "https://raw.githubusercontent.com/antony-jr/spirit-addons/main/bash_feedback/bashfeedbackrc.sh"
 
 cp ~/.bashrc ~/.bashrc.backup
-sed -i 'source .bashfeedbackrc' ~/.bashrc
+sed -i '/source .bashfeedbackrc/d' ~/.bashrc
 echo "source .bashfeedbackrc" >> ~/.bashrc
 
 set +x
